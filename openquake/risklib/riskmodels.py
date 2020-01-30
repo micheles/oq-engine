@@ -246,8 +246,7 @@ class RiskModel(object):
         :param str loss_type:
             the loss type considered
         :param assets:
-            assets is an iterator over A
-            :class:`openquake.risklib.scientific.Asset` instances
+            a DataFrame containing assets
         :param hazard_curve:
             an array of poes
         :param eids:

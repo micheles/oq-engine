@@ -42,6 +42,7 @@ def classical_risk(riskinputs, crmodel, param, monitor):
     weights = [w['default'] for w in param['weights']]
     statnames, stats = zip(*param['stats'])
     for ri in riskinputs:
+        assets = ri.assets.to_records()
         A = len(ri.assets)
         L = len(crmodel.lti)
         R = ri.hazard_getter.num_rlzs
@@ -51,7 +52,7 @@ def classical_risk(riskinputs, crmodel, param, monitor):
             r = out.rlzi
             for l, loss_type in enumerate(crmodel.loss_types):
                 # loss_curves has shape (A, C)
-                for i, asset in enumerate(ri.assets):
+                for i, asset in enumerate(assets):
                     loss_curves[out.rlzi, l, i] = lc = out[loss_type][i]
                     aid = asset['ordinal']
                     avg = scientific.average_loss(lc)
@@ -61,7 +62,7 @@ def classical_risk(riskinputs, crmodel, param, monitor):
 
         # compute statistics
         for l, loss_type in enumerate(crmodel.loss_types):
-            for i, asset in enumerate(ri.assets):
+            for i, asset in enumerate(assets):
                 avg_stats = compute_stats(avg_losses[:, l, i], stats, weights)
                 losses = loss_curves[0, l, i]['loss']
                 all_poes = numpy.array(

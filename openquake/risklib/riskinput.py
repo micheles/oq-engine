@@ -18,31 +18,31 @@
 
 import logging
 import numpy
+import pandas
 
 from openquake.baselib import hdf5
-from openquake.baselib.general import group_array, AccumDict
 from openquake.risklib import scientific
 
 U32 = numpy.uint32
 F32 = numpy.float32
 
 
-def get_assets_by_taxo(assets, tempname=None):
+def get_assets_by_taxo(assets_df, tempname=None):
     """
-    :param assets: an array of assets
+    :param assets_df: a pandas dataframe with the assets
     :param tempname: hdf5 file where the epsilons are (or None)
-    :returns: assets_by_taxo with attributes eps and idxs
+    :returns: assets_by_taxo groupby object with attributes eps and idxs
     """
-    assets_by_taxo = AccumDict(group_array(assets, 'taxonomy'))
+    assets_by_taxo = assets_df.groupby('taxonomy')
     assets_by_taxo.idxs = numpy.argsort(numpy.concatenate([
-        a['ordinal'] for a in assets_by_taxo.values()]))
+        a['ordinal'] for t, a in assets_by_taxo]))
     assets_by_taxo.eps = {}
     if tempname is None:  # no epsilons
         return assets_by_taxo
     # otherwise read the epsilons and group them by taxonomy
     with hdf5.File(tempname, 'r') as h5:
         dset = h5['epsilon_matrix']
-        for taxo, assets in assets_by_taxo.items():
+        for taxo, assets in assets_by_taxo:
             lst = [dset[aid] for aid in assets['ordinal']]
             assets_by_taxo.eps[taxo] = numpy.array(lst)
     return assets_by_taxo
@@ -50,7 +50,7 @@ def get_assets_by_taxo(assets, tempname=None):
 
 def get_output(crmodel, assets_by_taxo, haz, rlzi=None):
     """
-    :param assets_by_taxo: a dictionary taxonomy index -> assets on a site
+    :param assets_by_taxo: a groupby object with attributes eps and idxs
     :param haz: an array or a dictionary of hazard on that site
     :param rlzi: if given, a realization index
     :returns: an ArrayWrapper loss_type -> array of shape (A, ...)
@@ -81,7 +81,8 @@ def get_output(crmodel, assets_by_taxo, haz, rlzi=None):
         dic['rlzi'] = rlzi
     for l, lt in enumerate(crmodel.loss_types):
         ls = []
-        for taxonomy, assets_ in assets_by_taxo.items():
+        for taxonomy, assets_ in assets_by_taxo:
+            asset_records = assets_.to_records()
             if len(assets_by_taxo.eps):
                 epsilons = assets_by_taxo.eps[taxonomy][:, eids]
             else:  # no CoVs
@@ -95,7 +96,7 @@ def get_output(crmodel, assets_by_taxo, haz, rlzi=None):
                     dat = data[:, rm.imti[lt]]
                 else:  # hcurves
                     dat = data[rm.imti[lt]]
-                arrays.append(rm(lt, assets_, dat, eids, epsilons))
+                arrays.append(rm(lt, asset_records, dat, eids, epsilons))
             res = arrays[0] if len(arrays) == 1 else numpy.average(
                 arrays, weights=weights, axis=0)
             ls.append(res)
@@ -111,18 +112,15 @@ class RiskInput(object):
 
     :param hazard_getter:
         a callable returning the hazard data for a given realization
-    :param assets_by_site:
-        array of assets, one per site
+    :param assets_df:
+        a DataFrame with the assets on the given site
     """
-    def __init__(self, sid, hazard_getter, assets):
+    def __init__(self, sid, hazard_getter, assets_df):
         self.sid = sid
         self.hazard_getter = hazard_getter
-        self.assets = assets
-        self.weight = len(assets)
-        aids = []
-        for asset in self.assets:
-            aids.append(asset['ordinal'])
-        self.aids = numpy.array(aids, numpy.uint32)
+        self.assets = assets_df
+        self.weight = len(assets_df)
+        self.aids = U32(self.assets['ordinal'])
 
     def gen_outputs(self, cr_model, monitor, tempname=None, haz=None):
         """
@@ -165,15 +163,16 @@ def make_eps(asset_array, num_samples, seed, correlation):
     :param float correlation: the correlation coefficient
     :returns: epsilons matrix of shape (num_assets, num_samples)
     """
-    assets_by_taxo = group_array(asset_array, 'taxonomy')
+    assets_by_taxo = pandas.DataFrame.from_records(
+        asset_array, 'taxonomy').groupby('taxonomy')
     eps = numpy.zeros((len(asset_array), num_samples), numpy.float32)
-    for taxonomy, assets in assets_by_taxo.items():
+    for taxonomy, assets in assets_by_taxo:
         shape = (len(assets), num_samples)
         logging.info('Building %s epsilons for taxonomy %s', shape, taxonomy)
         zeros = numpy.zeros(shape)
         epsilons = scientific.make_epsilons(zeros, seed, correlation)
-        for asset, epsrow in zip(assets, epsilons):
-            eps[asset['ordinal']] = epsrow
+        for aid, epsrow in zip(assets['ordinal'], epsilons):
+            eps[aid] = epsrow
     return eps
 
 

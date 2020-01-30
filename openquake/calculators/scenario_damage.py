@@ -79,11 +79,12 @@ def scenario_damage(riskinputs, crmodel, param, monitor):
         ddic = AccumDict(accum=numpy.zeros((L, D - 1), F32))  # aid,eid->dd
         with haz_mon:
             ri.hazard_getter.init()
+        assets = ri.assets.to_records()
         for out in ri.gen_outputs(crmodel, monitor):
             with rsk_mon:
                 r = out.rlzi
                 for l, loss_type in enumerate(crmodel.loss_types):
-                    for asset, fractions in zip(ri.assets, out[loss_type]):
+                    for asset, fractions in zip(assets, out[loss_type]):
                         aid = asset['ordinal']
                         n = int(asset['number'])
                         idmgs = integral_damages(fractions, n, seed + aid)

@@ -26,6 +26,7 @@ import traceback
 from datetime import datetime
 from shapely import wkt
 import numpy
+import pandas
 
 from openquake.baselib import (
     general, hdf5, datastore, __version__ as engine_version)
@@ -942,14 +943,15 @@ class RiskCalculator(HazardCalculator):
                               % self.oqparam.inputs['job_ini'])
         rinfo_dt = numpy.dtype([('sid', U16), ('num_assets', U16)])
         rinfo = []
-        assets_by_site = self.assetcol.assets_by_site()
-        for sid, assets in enumerate(assets_by_site):
+        assets_df = pandas.DataFrame.from_records(
+            self.assetcol.array, 'site_id')
+        for sid, assets in assets_df.groupby('site_id'):
             if len(assets) == 0:
                 continue
             getter = self.get_getter(kind, sid)
             for block in general.block_splitter(
-                    assets, self.oqparam.assets_per_site_limit):
-                yield riskinput.RiskInput(sid, getter, numpy.array(block))
+                    range(len(assets)), self.oqparam.assets_per_site_limit):
+                yield riskinput.RiskInput(sid, getter, assets.iloc[block])
             rinfo.append((sid, len(block)))
             if len(block) >= TWO16:
                 logging.error('There are %d assets on site #%d!',

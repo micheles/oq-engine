@@ -51,6 +51,9 @@ def event_based_risk(riskinputs, crmodel, param, monitor):
     L = len(crmodel.lti)
     tempname = param['tempname']
     for ri in riskinputs:
+        assets = ri.assets.to_records()
+        if assets.shape == ():
+            assets = numpy.array(assets)
         with monitor('getting hazard'):
             ri.hazard_getter.init()
             hazard = ri.hazard_getter.get_hazard()
@@ -79,8 +82,8 @@ def event_based_risk(riskinputs, crmodel, param, monitor):
                 loss_ratios = out[loss_type]
                 if loss_ratios is None:  # for GMFs below the minimum_intensity
                     continue
-                avalues = riskmodels.get_values(loss_type, ri.assets)
-                for a, asset in enumerate(ri.assets):
+                avalues = riskmodels.get_values(loss_type, assets)
+                for a, asset in enumerate(assets):
                     aval = avalues[a]
                     aid = asset['ordinal']
                     idx = aid2idx[aid]

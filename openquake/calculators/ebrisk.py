@@ -49,8 +49,7 @@ def calc_risk(gmfs, param, monitor):
     eids = numpy.unique(gmfs['eid'])
     dstore = datastore.read(param['hdf5path'])
     with monitor('getting assets'):
-        assetcol = dstore['assetcol']
-        assets_by_site = assetcol.assets_by_site()
+        assets_df = dstore.read_df('assetcol/array', 'site_id')
         exposed_values = dstore['exposed_values/agg'][()]
     with monitor('getting crmodel'):
         crmodel = riskmodels.CompositeRiskModel.read(dstore)
@@ -70,16 +69,21 @@ def calc_risk(gmfs, param, monitor):
     aggby = param['aggregate_by']
 
     minimum_loss = []
-    fraction = param['minimum_loss_fraction'] / len(assetcol)
+    fraction = param['minimum_loss_fraction'] / len(assets_df)
     for lt, lti in crmodel.lti.items():
         val = exposed_values[lti] * fraction
         minimum_loss.append(val)
         if lt in lba.policy_dict:  # same order as in lba.compute
             minimum_loss.append(val)
 
-    for sid, haz in general.group_array(gmfs, 'sid').items():
-        assets_on_sid = assets_by_site[sid]
-        if len(assets_on_sid) == 0:
+    haz_by_sid = general.group_array(gmfs, 'sid')
+    for sid, assets_on_sid in assets_df.groupby('site_id'):
+        assets = assets_on_sid.to_records()
+        if assets.shape == ():  # hack
+            assets = numpy.array([assets])
+        try:
+            haz = haz_by_sid[sid]
+        except KeyError:  # no hazard here
             continue
         with mon_risk:
             acc['events_per_sid'] += len(haz)
@@ -94,7 +98,7 @@ def calc_risk(gmfs, param, monitor):
                 field = 'occupants_None'
             else:
                 field = 'value-' + lt
-            for a, asset in enumerate(assets_on_sid):
+            for a, asset in enumerate(assets):
                 if aggby:
                     idx = ','.join(map(str, asset[aggby]))
                 aid = asset['ordinal']

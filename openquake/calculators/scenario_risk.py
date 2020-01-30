@@ -101,11 +101,10 @@ def scenario_risk(riskinputs, crmodel, param, monitor):
                 if numpy.product(losses.shape) == 0:  # happens for all NaNs
                     continue
                 stats = numpy.zeros(len(ri.assets), stat_dt)  # mean, stddev
-                for a, asset in enumerate(ri.assets):
-                    aid = asset['ordinal']
+                for a, aid in enumerate(ri.assets['ordinal']):
                     stats['mean'][a] = losses[a].mean()
                     stats['stddev'][a] = losses[a].std(ddof=1)
-                    result['avg'].append((l, r, asset['ordinal'], stats[a]))
+                    result['avg'].append((l, r, aid, stats[a]))
                     for loss, eid in highest_losses(losses[a], out.eids, alt):
                         acc[aid, eid][l] = loss
                 agglosses = losses.sum(axis=0)  # shape num_gmfs
